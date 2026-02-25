@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@theme {
+  /* Custom font family - Google Sans */
+  --font-sans: "Google Sans", system-ui, -apple-system, sans-serif;
+
+  /* Google Translate inspired primary colors */
+  --color-primary-50: #e8f0fe;
+  --color-primary-100: #d3e3fd;
+  --color-primary-200: #aecbfa;
+  --color-primary-300: #8ab4f8;
+  --color-primary-400: #669df6;
+  --color-primary-500: #1a73e8; /* Main primary */
+  --color-primary-600: #1557b0;
+  --color-primary-700: #0d47a1;
+  --color-primary-800: #0842a0;
+  --color-primary-900: #0b57d0;
+
+  /* Semantic colors */
+  --color-primary: var(--color-primary-500);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: oklch(95% 0.01 262);
+  --color-secondary-foreground: oklch(20% 0.05 262);
+  --color-muted: #f1f3f4;
+  --color-muted-foreground: #5f6368;
+  --color-accent: oklch(95% 0.01 220);
+  --color-accent-foreground: oklch(20% 0.05 220);
+  --color-destructive: oklch(58% 0.24 27);
+  --color-destructive-foreground: oklch(98% 0.002 27);
+  --color-border: #dadce0;
+  --color-input: oklch(90% 0.01 262);
+  --color-ring: var(--color-primary-500);
+
+  /* Font sizes - increased base size */
+  --font-size-xs: 0.8125rem; /* 13px */
+  --font-size-sm: 0.9375rem; /* 15px */
+  --font-size-base: 1.0625rem; /* 17px - increased from default 16px */
+  --font-size-lg: 1.1875rem; /* 19px */
+  --font-size-xl: 1.3125rem; /* 21px */
+  --font-size-2xl: 1.5625rem; /* 25px */
+  --font-size-3xl: 1.9375rem; /* 31px */
+  --font-size-4xl: 2.3125rem; /* 37px */
+  --font-size-5xl: 3.0625rem; /* 49px */
+  --font-size-6xl: 3.8125rem; /* 61px */
+  --font-size-7xl: 4.8125rem; /* 77px */
+  --font-size-8xl: 6.0625rem; /* 97px */
+  --font-size-9xl: 8.0625rem; /* 129px */
+
+  /* Spacing base */
+  --spacing: 0.25rem;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Micro-animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s ease-out forwards;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}

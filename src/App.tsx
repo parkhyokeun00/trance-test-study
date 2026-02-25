@@ -1,0 +1,91 @@
+import Translate from "./Translate";
+import { useState } from "react";
+import Translator from "./ai/Translator.ts";
+import Initialize from "./Initialize.tsx";
+
+function App() {
+  const [translator, setTranslator] = useState<Translator>(null);
+  const [progress, setProgress] = useState<number>(0);
+  const [isInitializing, setIsInitializing] = useState<boolean>(false);
+
+  const init = async () => {
+    setIsInitializing(true);
+    const t = Translator.getInstance();
+    await t.init(setProgress);
+    setTranslator(t);
+    setIsInitializing(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-neutral-100 flex flex-col justify-between gap-2">
+      <header className="bg-white border-b border-border shadow-sm p-4">
+        <h1 className="text-md md:text-3xl font-sans text-center flex justify-center items-center gap-2 md:gap-6">
+          <span className="font-bold flex items-center justify-center gap-1">
+            <img
+              src="gemma.svg"
+              alt="Gemma Logo"
+              className="block"
+              style={{
+                width: "1.2em",
+                height: "1.2em",
+              }}
+            />
+            <span>
+              Translate<span className="text-primary">Gemma</span>
+            </span>
+          </span>
+          <span>//</span>
+          <span className="font-bold flex items-center justify-center gap-1">
+            <img
+              src="hf-logo.svg"
+              alt="Transformers.js Logo"
+              className="block"
+              style={{
+                width: "1.2em",
+                height: "1.2em",
+              }}
+            />
+            Transformers.js
+          </span>
+        </h1>
+      </header>
+      {translator ? (
+        <Translate className="w-full" translator={translator} />
+      ) : (
+        <Initialize
+          onInitialize={init}
+          progress={progress}
+          isInitializing={isInitializing}
+        />
+      )}
+      <footer
+        className="p-8 pt-0 text-center text-muted-foreground text-xs md:text-sm animate-fade-in"
+        style={{ animationDelay: "0.5s", opacity: 0 }}
+      >
+        <p>
+          High-quality translations across 56 languages powered by{" "}
+          <a
+            href="https://blog.google/technology/developers/gemma-open-models/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline underline-offset-2 transition-all hover:underline-offset-4"
+          >
+            Google's TranslateGemma
+          </a>{" "}
+          model, running entirely in your browser with{" "}
+          <a
+            href="https://huggingface.co/docs/transformers.js"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline underline-offset-2 transition-all hover:underline-offset-4"
+          >
+            Transformers.js
+          </a>{" "}
+          and complete privacy.
+        </p>
+      </footer>
+    </div>
+  );
+}
+
+export default App;
