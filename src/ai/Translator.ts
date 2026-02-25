@@ -1,4 +1,28 @@
-import { pipeline, DataType } from "@huggingface/transformers";
+type DataType = "q4" | "q8" | "fp16" | "fp32";
+
+type TransformersModule = {
+  pipeline: (
+    task: string,
+    model: string,
+    options: Record<string, unknown>
+  ) => Promise<any>;
+};
+
+let transformersModulePromise: Promise<TransformersModule> | null = null;
+
+const runtimeImport = new Function(
+  "specifier",
+  "return import(specifier);"
+) as (specifier: string) => Promise<TransformersModule>;
+
+const loadTransformersModule = async (): Promise<TransformersModule> => {
+  if (!transformersModulePromise) {
+    transformersModulePromise = runtimeImport(
+      "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.0-next.3"
+    );
+  }
+  return transformersModulePromise;
+};
 
 class Translator {
   private static instance: Translator | null = null;
@@ -22,9 +46,10 @@ class Translator {
 
     const loaded = new Map<string, number>();
     let newProgress = 0;
+    const { pipeline } = await loadTransformersModule();
 
     this.pipeline = await pipeline("text-generation", Translator.modelId, {
-      progress_callback: (e) => {
+      progress_callback: (e: any) => {
         if (e.status === "progress") {
           loaded.set(e.file, e.loaded);
           const allLoaded = Array.from(loaded.values()).reduce(
