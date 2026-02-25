@@ -1,7 +1,6 @@
 import Translate from "./Translate";
 import { useState } from "react";
 import Translator from "./ai/Translator.ts";
-import Initialize from "./Initialize.tsx";
 
 function App() {
   const [translator, setTranslator] = useState<Translator>(null);
@@ -49,15 +48,13 @@ function App() {
           </span>
         </h1>
       </header>
-      {translator ? (
-        <Translate className="w-full" translator={translator} />
-      ) : (
-        <Initialize
-          onInitialize={init}
-          progress={progress}
-          isInitializing={isInitializing}
-        />
-      )}
+      <Translate
+        className="w-full"
+        translator={translator}
+        onInitialize={init}
+        isInitializing={isInitializing}
+        progress={progress}
+      />
       <footer
         className="p-8 pt-0 text-center text-muted-foreground text-xs md:text-sm animate-fade-in"
         style={{ animationDelay: "0.5s", opacity: 0 }}

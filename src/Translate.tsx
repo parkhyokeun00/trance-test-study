@@ -12,12 +12,18 @@ const MAX_SHARE_TEXT_LENGTH = 1000;
 
 interface TranslateProps {
   className?: string;
-  translator: Translator;
+  translator: Translator | null;
+  onInitialize: () => Promise<void>;
+  isInitializing?: boolean;
+  progress?: number;
 }
 
 export default function Translate({
   className = "",
   translator,
+  onInitialize,
+  isInitializing = false,
+  progress = 0,
 }: TranslateProps) {
   // Initialize from URL hash
   const getInitialState = () => {
@@ -154,6 +160,10 @@ export default function Translate({
   }, [sourceLanguage, targetLanguage, sourceText]);
 
   useEffect(() => {
+    if (!translator) {
+      setTargetText("");
+      return;
+    }
     const timer = setTimeout(() => {
       translate(sourceText, sourceLanguage, targetLanguage);
     }, 500);
@@ -161,7 +171,7 @@ export default function Translate({
     return () => {
       clearTimeout(timer);
     };
-  }, [sourceText, sourceLanguage, targetLanguage]);
+  }, [sourceText, sourceLanguage, targetLanguage, translator]);
 
   return (
     <div
@@ -172,6 +182,23 @@ export default function Translate({
     >
       <div className="flex flex-col md:flex-row w-full gap-4 md:gap-8">
         <div className="flex flex-col gap-3 w-full md:w-1/2 relative">
+          {!translator && (
+            <div className="rounded-md border border-primary-200 bg-primary-50 p-3 text-sm text-primary-700 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+              <span>
+                Model is not loaded. Click to download when you want to start
+                translating.
+              </span>
+              <button
+                onClick={onInitialize}
+                disabled={isInitializing}
+                className="px-3 py-2 rounded-md bg-primary text-primary-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isInitializing
+                  ? `Downloading... ${Math.round(progress)}%`
+                  : "Load model"}
+              </button>
+            </div>
+          )}
           <LanguageSelector
             value={sourceLanguage}
             onChange={setSourceLanguage}
@@ -244,7 +271,11 @@ export default function Translate({
             <Textarea
               value={targetText}
               disabled
-              placeholder="Translation will appear here..."
+              placeholder={
+                translator
+                  ? "Translation will appear here..."
+                  : "Load model to start translating..."
+              }
               className="h-64 md:h-[42rem]"
               variant="default"
             />
