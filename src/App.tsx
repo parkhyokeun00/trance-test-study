@@ -1,19 +1,49 @@
 import Translate from "./Translate";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Translator from "./ai/Translator.ts";
 
+const MODEL_READY_KEY = "translategemma:model-ready";
+
 function App() {
-  const [translator, setTranslator] = useState<Translator>(null);
+  const [translator, setTranslator] = useState<Translator | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [isInitializing, setIsInitializing] = useState<boolean>(false);
 
-  const init = async () => {
+  const initInternal = async (options?: {
+    localFilesOnly?: boolean;
+    silent?: boolean;
+  }) => {
+    if (isInitializing) return;
     setIsInitializing(true);
-    const t = Translator.getInstance();
-    await t.init(setProgress);
-    setTranslator(t);
-    setIsInitializing(false);
+    try {
+      const t = Translator.getInstance();
+      await t.init({
+        onProgress: options?.silent ? undefined : setProgress,
+        localFilesOnly: options?.localFilesOnly ?? false,
+      });
+      setTranslator(t);
+      localStorage.setItem(MODEL_READY_KEY, "1");
+    } catch (error) {
+      if (!options?.silent) {
+        console.error("Failed to initialize model:", error);
+      }
+      if (options?.localFilesOnly) {
+        localStorage.removeItem(MODEL_READY_KEY);
+      }
+    } finally {
+      setIsInitializing(false);
+    }
   };
+
+  const init = async () => {
+    await initInternal();
+  };
+
+  useEffect(() => {
+    if (localStorage.getItem(MODEL_READY_KEY) === "1") {
+      void initInternal({ localFilesOnly: true, silent: true });
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-neutral-100 flex flex-col justify-between gap-2">

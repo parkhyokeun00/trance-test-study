@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef } from "react";
-import { ArrowLeftRight, Copy, Check, Share2, Trash } from "lucide-react";
+import { ArrowLeftRight, Copy, Check, Share2, Trash, Upload, Download, X } from "lucide-react";
 import { Textarea, Button, Loader } from "./theme";
 import cn from "./utils/classnames.ts";
 import { type LanguageCode, LANGUAGES } from "./constants";
 import LanguageSelector from "./components/LanguageSelector";
 import Translator from "./ai/Translator.ts";
-import { formatTime, formatNumber } from "./utils/format";
+import { formatTime, formatNumber, formatBytes } from "./utils/format";
 import { countWords } from "./utils/countWords.ts";
+import { parseEpub, parseMarkdown, validateDocumentFile } from "./document/parsers";
+import { translateDocument } from "./document/translateDocument";
+import { createDownloadFileName, downloadText, toMarkdownOutput } from "./document/exporters";
+import { DocumentTranslationProgress } from "./types/document";
 
 const MAX_SHARE_TEXT_LENGTH = 1000;
 
@@ -17,6 +21,21 @@ interface TranslateProps {
   isInitializing?: boolean;
   progress?: number;
 }
+
+type DocumentJobState =
+  | "idle"
+  | "parsing"
+  | "translating"
+  | "done"
+  | "error"
+  | "canceled";
+
+const INITIAL_DOC_PROGRESS: DocumentTranslationProgress = {
+  totalSegments: 0,
+  completedSegments: 0,
+  percent: 0,
+  currentLabel: "",
+};
 
 export default function Translate({
   className = "",
@@ -64,16 +83,26 @@ export default function Translate({
   const [translating, setTranslating] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [shared, setShared] = useState<boolean>(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const textAbortControllerRef = useRef<AbortController | null>(null);
   const [translationTime, setTranslationTime] = useState<number>(0);
   const [translationWords, setTranslationWords] = useState<number>(0);
 
+  const [documentJobState, setDocumentJobState] = useState<DocumentJobState>("idle");
+  const [documentProgress, setDocumentProgress] =
+    useState<DocumentTranslationProgress>(INITIAL_DOC_PROGRESS);
+  const [documentError, setDocumentError] = useState<string>("");
+  const [documentOutput, setDocumentOutput] = useState<string>("");
+  const [documentFileName, setDocumentFileName] = useState<string>("");
+  const [pendingDocumentFile, setPendingDocumentFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const documentAbortControllerRef = useRef<AbortController | null>(null);
+
   const handleSwapLanguages = () => {
-    // Swap languages
     setSourceLanguage(targetLanguage);
     setTargetLanguage(sourceLanguage);
 
-    // Swap text content
     setSourceText(targetText);
     setTargetText(sourceText);
   };
@@ -101,7 +130,7 @@ export default function Translate({
     }
   };
 
-  const translate = async (
+  const runTextTranslation = async (
     text: string,
     sourceLang: LanguageCode,
     targetLang: LanguageCode
@@ -115,21 +144,17 @@ export default function Translate({
 
     const started = performance.now();
 
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    if (textAbortControllerRef.current) {
+      textAbortControllerRef.current.abort();
     }
 
-    abortControllerRef.current = new AbortController();
-    const currentController = abortControllerRef.current;
+    textAbortControllerRef.current = new AbortController();
+    const currentController = textAbortControllerRef.current;
 
     setTranslating(true);
 
     try {
-      const translation = await translator.translate(
-        text,
-        sourceLang,
-        targetLang
-      );
+      const translation = await translator.translate(text, sourceLang, targetLang);
 
       if (!currentController.signal.aborted) {
         setTargetText(translation);
@@ -145,6 +170,99 @@ export default function Translate({
         setTranslating(false);
       }
     }
+  };
+
+  const runDocumentTranslation = async (file: File, activeTranslator: Translator) => {
+    setDocumentFileName(file.name);
+    setDocumentError("");
+    setDocumentOutput("");
+    setDocumentProgress(INITIAL_DOC_PROGRESS);
+
+    try {
+      const { kind } = validateDocumentFile(file);
+
+      setDocumentJobState("parsing");
+      const parsedDocument =
+        kind === "md"
+          ? parseMarkdown(await file.text(), file.name)
+          : await parseEpub(file);
+
+      documentAbortControllerRef.current?.abort();
+      const controller = new AbortController();
+      documentAbortControllerRef.current = controller;
+
+      setDocumentJobState("translating");
+      const { segmentTranslations, result } = await translateDocument({
+        translator: activeTranslator,
+        parsedDocument,
+        sourceLanguage,
+        targetLanguage,
+        signal: controller.signal,
+        onProgress: setDocumentProgress,
+      });
+
+      const outputText = toMarkdownOutput(parsedDocument, segmentTranslations);
+      result.outputText = outputText;
+
+      if (result.failedSegments.length > 0) {
+        setDocumentError(
+          `Completed with ${result.failedSegments.length} failed segment(s). Failed segments were marked in output.`
+        );
+      }
+
+      setDocumentOutput(result.outputText);
+      setDocumentJobState("done");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setDocumentJobState("canceled");
+        return;
+      }
+
+      setDocumentJobState("error");
+      const message = error instanceof Error ? error.message : "Unknown document translation error.";
+      setDocumentError(message);
+    }
+  };
+
+  const handleDocumentFile = async (file: File) => {
+    setPendingDocumentFile(file);
+
+    if (!translator) {
+      setDocumentJobState("idle");
+      setDocumentError("Model is not loaded. Attempting to load model automatically...");
+      if (!isInitializing) {
+        void onInitialize();
+      }
+      return;
+    }
+
+    await runDocumentTranslation(file, translator);
+    setPendingDocumentFile(null);
+  };
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await handleDocumentFile(file);
+    e.target.value = "";
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    await handleDocumentFile(file);
+  };
+
+  const handleCancelDocumentTranslation = () => {
+    documentAbortControllerRef.current?.abort();
+  };
+
+  const handleDownloadDocument = () => {
+    if (!documentOutput || !documentFileName) return;
+    const outputName = createDownloadFileName(documentFileName, targetLanguage);
+    downloadText(outputName, documentOutput);
   };
 
   // Update URL hash when languages or text change
@@ -164,14 +282,27 @@ export default function Translate({
       setTargetText("");
       return;
     }
+    if (documentJobState === "parsing" || documentJobState === "translating") {
+      return;
+    }
+
     const timer = setTimeout(() => {
-      translate(sourceText, sourceLanguage, targetLanguage);
+      runTextTranslation(sourceText, sourceLanguage, targetLanguage);
     }, 500);
 
     return () => {
       clearTimeout(timer);
     };
-  }, [sourceText, sourceLanguage, targetLanguage, translator]);
+  }, [sourceText, sourceLanguage, targetLanguage, translator, documentJobState]);
+
+  useEffect(() => {
+    if (!translator || !pendingDocumentFile) return;
+    if (documentJobState === "parsing" || documentJobState === "translating") return;
+
+    void runDocumentTranslation(pendingDocumentFile, translator).finally(() => {
+      setPendingDocumentFile(null);
+    });
+  }, [translator, pendingDocumentFile, documentJobState, sourceLanguage, targetLanguage]);
 
   return (
     <div
@@ -199,10 +330,99 @@ export default function Translate({
               </button>
             </div>
           )}
+
           <LanguageSelector
             value={sourceLanguage}
             onChange={setSourceLanguage}
           />
+
+          <div className="rounded-md border border-border bg-white p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">Document Translation (.md, .epub)</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".md,.epub"
+                onChange={handleFileInputChange}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outlined"
+                icon={Upload}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={documentJobState === "parsing" || documentJobState === "translating"}
+              >
+                Upload
+              </Button>
+            </div>
+
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              className={cn(
+                "border-2 border-dashed rounded-md p-4 text-sm text-muted-foreground transition-colors",
+                isDragging ? "border-primary bg-primary-50" : "border-border"
+              )}
+            >
+              Drop a `.md` or `.epub` file here to auto-translate.
+            </div>
+
+            {documentFileName && (
+              <p className="text-xs text-muted-foreground">
+                File: <b>{documentFileName}</b>
+              </p>
+            )}
+
+            {(documentJobState === "parsing" || documentJobState === "translating") && (
+              <div className="space-y-2">
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${documentProgress.percent}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {documentJobState === "parsing"
+                    ? "Parsing document..."
+                    : `${documentProgress.completedSegments}/${documentProgress.totalSegments} (${documentProgress.percent}%) ${documentProgress.currentLabel}`}
+                </p>
+                <Button
+                  type="button"
+                  variant="text"
+                  icon={X}
+                  onClick={handleCancelDocumentTranslation}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+
+            {documentError && (
+              <p className="text-xs text-destructive">{documentError}</p>
+            )}
+
+            {documentOutput && (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Output ready ({formatBytes(new Blob([documentOutput]).size)})
+                </p>
+                <Button
+                  type="button"
+                  variant="primary"
+                  icon={Download}
+                  onClick={handleDownloadDocument}
+                >
+                  Download .md
+                </Button>
+              </div>
+            )}
+          </div>
+
           <Textarea
             value={sourceText}
             onChange={(e) => setSourceText(e.target.value)}

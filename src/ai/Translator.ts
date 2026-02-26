@@ -41,9 +41,14 @@ class Translator {
     return Translator.instance;
   }
 
-  public async init(onProgress?: (progress: number) => void) {
+  public async init(options?: {
+    onProgress?: (progress: number) => void;
+    localFilesOnly?: boolean;
+  }) {
     if (this.pipeline) return;
 
+    const onProgress = options?.onProgress;
+    const localFilesOnly = options?.localFilesOnly ?? false;
     const loaded = new Map<string, number>();
     let newProgress = 0;
     const { pipeline } = await loadTransformersModule();
@@ -66,6 +71,7 @@ class Translator {
       },
       device: "webgpu",
       dtype: Translator.dtype,
+      local_files_only: localFilesOnly,
     });
   }
 
