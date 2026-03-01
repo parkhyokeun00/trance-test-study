@@ -7,7 +7,7 @@ import LanguageSelector from "./components/LanguageSelector";
 import Translator from "./ai/Translator.ts";
 import { formatTime, formatNumber, formatBytes } from "./utils/format";
 import { countWords } from "./utils/countWords.ts";
-import { parseEpub, parseMarkdown, validateDocumentFile } from "./document/parsers";
+import { parseEpub, parseMarkdown, parsePdf, validateDocumentFile } from "./document/parsers";
 import { translateDocument } from "./document/translateDocument";
 import { createDownloadFileName, downloadText, toMarkdownOutput } from "./document/exporters";
 import { DocumentTranslationProgress } from "./types/document";
@@ -185,7 +185,9 @@ export default function Translate({
       const parsedDocument =
         kind === "md"
           ? parseMarkdown(await file.text(), file.name)
-          : await parseEpub(file);
+          : kind === "epub"
+            ? await parseEpub(file)
+            : await parsePdf(file);
 
       documentAbortControllerRef.current?.abort();
       const controller = new AbortController();
@@ -338,11 +340,11 @@ export default function Translate({
 
           <div className="rounded-md border border-border bg-white p-3 space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-medium">Document Translation (.md, .epub)</p>
+              <p className="text-sm font-medium">Document Translation (.md, .epub, .pdf)</p>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".md,.epub"
+                accept=".md,.epub,.pdf"
                 onChange={handleFileInputChange}
                 className="hidden"
               />
@@ -369,7 +371,7 @@ export default function Translate({
                 isDragging ? "border-primary bg-primary-50" : "border-border"
               )}
             >
-              Drop a `.md` or `.epub` file here to auto-translate.
+              Drop a `.md`, `.epub`, or `.pdf` file here to auto-translate.
             </div>
 
             {documentFileName && (

@@ -1,5 +1,9 @@
 import JSZip from "jszip";
+import * as pdfjsLib from "pdfjs-dist";
 import { DocumentSegment, ParsedDocument } from "../types/document";
+
+// Setup PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
@@ -517,7 +521,65 @@ export const parseEpub = async (file: File): Promise<ParsedDocument> => {
   };
 };
 
-export const validateDocumentFile = (file: File): { kind: "md" | "epub" } => {
+export const parsePdf = async (file: File): Promise<ParsedDocument> => {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error("File is too large. The maximum size is 25MB.");
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const segments: DocumentSegment[] = [];
+
+  let order = 0;
+  let textId = 0;
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+
+    // Simple heuristic: Join all text items, using newline if vertical position changes significantly
+    let pageText = "";
+    let lastY = -1;
+
+    for (const item of textContent.items) {
+      if ("str" in item) {
+        if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
+          pageText += "\n";
+        } else if (lastY !== -1) {
+          pageText += " ";
+        }
+        pageText += item.str;
+        lastY = item.transform[5];
+      }
+    }
+
+    // Clean up excessive whitespace but preserve newlines
+    pageText = pageText.replace(/ +/g, " ").trim();
+
+    if (pageText) {
+      segments.push({
+        id: `pdf-text-${textId++}`,
+        chapterIndex: pageNum - 1,
+        order: order++,
+        preserveType: "text",
+        sourceText: pageText,
+        suffix: "\n\n",
+      });
+    }
+  }
+
+  if (segments.length === 0) {
+    throw new Error("PDF parsing failed: no translatable text found.");
+  }
+
+  return {
+    kind: "pdf",
+    fileName: file.name,
+    segments,
+  };
+};
+
+export const validateDocumentFile = (file: File): { kind: "md" | "epub" | "pdf" } => {
   const lower = file.name.toLowerCase();
   if (file.size > MAX_FILE_SIZE_BYTES) {
     throw new Error("File is too large. The maximum size is 25MB.");
@@ -529,5 +591,8 @@ export const validateDocumentFile = (file: File): { kind: "md" | "epub" } => {
   if (lower.endsWith(".epub")) {
     return { kind: "epub" };
   }
-  throw new Error("Unsupported file type. Please upload .md or .epub.");
+  if (lower.endsWith(".pdf")) {
+    return { kind: "pdf" };
+  }
+  throw new Error("Unsupported file type. Please upload .md, .epub, or .pdf.");
 };

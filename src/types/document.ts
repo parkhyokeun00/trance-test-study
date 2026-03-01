@@ -1,4 +1,4 @@
-export type DocumentKind = "markdown" | "epub";
+export type DocumentKind = "markdown" | "epub" | "pdf";
 
 export type DocumentPreserveType = "text" | "code" | "raw";
 
